@@ -1,0 +1,399 @@
+---
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Probability and Statistics
+
+# Lab Assignment 1: Naive Bayes Classifier
+
+## Work breakdown
+
+-   Victor Muryn
+-   Khrystyna Dmytriv
+-   Veronika Tkachyshyn
+
+## Introduction
+
+During the first three weeks, you learned a couple of essential notions
+and theorems, and one of the most important among them is the *Bayes
+theorem*.
+
+One of its applications is **Naive Bayes classifier**, which is a
+probabilistic classifier whose aim is to determine which class some
+observation probably belongs to by using the Bayes formula:
+$$\mathsf{P}(\mathrm{class}\mid \mathrm{observation})=\frac{\mathsf{P}(\mathrm{observation}\mid\mathrm{class})\mathsf{P}(\mathrm{class})}{\mathsf{P}(\mathrm{observation})}$$
+
+Under the strong independence assumption, one can calculate
+$\mathsf{P}(\mathrm{observation} \mid \mathrm{class})$ as
+$$\mathsf{P}(\mathrm{observation}) = \prod_{i=1}^{n} \mathsf{P}(\mathrm{feature}_i), \qquad \mathsf{P}(\mathrm{observation} \mid \mathrm{class}) = \prod_{i=1}^{n} \mathsf{P}(\mathrm{feature}_i \mid \mathrm{class}),$$
+where $n$ is the total number of features describing a given
+observation. Thus, $\mathsf{P}(\mathrm{class}|\mathrm{observation})$ now
+can be calculated as
+
+$$\mathsf{P}(\mathrm{class} \mid \mathrm{\mathrm{observation}}) = \mathsf{P}(\mathrm{class})\times \prod_{i=1}^{n}\frac{\mathsf{P}(\mathrm{feature}_i\mid \mathrm{class})}{\mathsf{P}(\mathrm{feature}_i)}\tag{1}$$
+
+All the terms on the right-hand side can be estimated from the data as
+respective relative frequencies;\
+**\*see [this
+site](https://monkeylearn.com/blog/practical-explanation-naive-bayes-classifier/)
+for more detailed explanations\***
+
+## Data description
+
+There are 5 datasets uploaded on the CMS (data.zip)
+
+To determine your variant, take your team number from the list of teams
+on cms and take *mod 5* - this is the number of your data set.
+
+-   **0 - authors** This data set consists of citations of three famous
+    writers: Edgar Alan Poe, Mary Wollstonecraft Shelley and HP
+    Lovecraft. The task with this data set is to classify a piece of
+    text with the author who was more likely to write it.
+
+Each data set consists of two files: *train.csv* and *test.csv*. The
+first one you will need find the probabilities distributions for each of
+the features, while the second one is needed for checking how well your
+classifier works.
+
+```{r}
+# here goes a list of recommended libraries,
+# though you may install other ones if they are needed
+library(tidytext)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(comprehenr)
+
+# for diagrams
+library(wordcloud)
+library(RColorBrewer)
+library(wordcloud2)
+library(tm)
+library(stringr)
+```
+
+## Outline of the work
+
+1.  **Data pre-processing** (includes removing punctuation marks and
+    stop words, representing each message as a bag-of-words)
+2.  **Data visualization** (it's time to plot your data!)
+3.  **Classifier implementation** (using the training set, calculate all
+    the conditional probabilities in formula (1) and then use those to
+    predict classes for messages in the testing set)
+4.  **Measurements of effectiveness of your classifier** (accuracy,
+    precision and recall curves, F1 score metric etc)
+5.  **Conclusions**
+
+*!! do not forget to submit both the (compiled) Rmd source file and the
+.html output !!*
+
+## Data pre-processing
+
+-   Read the *.csv* data files.
+-   Сlear your data from punctuation or other unneeded symbols.
+-   Clear you data from stop words. You don't want words as is, and, or
+    etc. to affect your probabilities distributions, so it is a wise
+    decision to get rid of them. Find list of stop words in the cms
+    under the lab task.
+-   Represent each test message as its bag-of-words. Here:
+    <https://machinelearningmastery.com/gentle-introduction-bag-words-model/>
+    you can find general introduction to the bag-of-words model and
+    examples on to create it.
+-   It is highly recommended to get familiar with R dataframes, it would
+    make the work much easier to do.
+-   Useful links:
+    -   <https://steviep42.github.io/webscraping/book/bagofwords.html#tidytext> -
+        example of using *tidytext* to count frequencies of the words.
+    -   Basics of Text Mining in R:
+        <http://rstudio-pubs-static.s3.amazonaws.com/256588_57b585da6c054349825cba46685d8464.html>
+        . Note that it also includes an example on how to create a bag
+        of words from your text document.
+
+```{r}
+test_path <- "data/0-authors/test.csv"
+train_path <- "data/0-authors/train.csv"
+
+stop_words <- read_file("stop_words.txt")
+# https://stackoverflow.com/questions/27195912/why-does-strsplit-return-a-list
+splitted_stop_words <- strsplit(stop_words, split = '\n')
+splitted_stop_words <- splitted_stop_words[[1]]
+```
+
+```{r}
+train <-  read.csv(file = train_path, stringsAsFactors = FALSE)
+test <-  read.csv(file = test_path, stringsAsFactors = FALSE)
+```
+
+```{r}
+# note the power functional features of R bring us! 
+tidy_text <-
+  unnest_tokens(train, 'splitted', 'text', token = "words") %>%
+  filter(!splitted %in% splitted_stop_words)
+
+unique_words = tidy_text %>% count(splitted)
+
+```
+
+## Data visualization
+
+Each time you work with some data, you need to understand it before you
+start processing it. R has very powerful tools to make nice plots and
+visualization. Show what are the most common words for negative and
+positive examples as a histogram, word cloud etc. Be creative!
+
+```{r}
+head(unique_words[order(unique_words$n, decreasing = TRUE), ], 10)
+```
+
+```{r}
+set.seed(5433) # for reproducibility
+dev.new(width = 1000,
+        height = 1000,
+        unit = "px")
+wordcloud(
+  words = unique_words$splitted,
+  freq = unique_words$n,
+  max.words = 1000,
+  random.order = FALSE,
+  rot.per = 0.5,
+  scale = c(4, .5),
+  min.freq = 165,
+  colors = brewer.pal(8, "Dark2")
+)
+```
+
+## Classifier implementation
+
+```{r}
+naiveBayes <- setRefClass(
+  "naiveBayes",
+
+  # attributes of classifier
+  fields = list(
+    count = "data.frame", # count of every word
+    writers = "data.frame", # data about writers
+    words = "numeric" # all number of words
+  ),
+  
+  methods = list(
+    # train our classifier
+    fit = function(df) {
+      .self$count <- df %>% count(author, splitted) # count number of words for each writer
+      authors <- unique(count$author)
+      sum_of_words <- sum(count$n)
+      
+      # dataset for writers
+      writers_temp <- data.frame(
+        author = character(0),
+        probability = numeric(0),
+        words = numeric(0)
+      )
+    
+      # calculate data for each writer
+      for (author in authors) {
+        author_words <- sum(count$n[count$author == author])
+        probability <- author_words / sum_of_words
+
+        temp_df <- data.frame(
+          author = author,
+          probability = probability,
+          words = author_words
+        )
+
+        writers_temp <- rbind(writers_temp, temp_df)
+      }
+
+      rownames(writers_temp) <- NULL
+      .self$writers <- writers_temp
+    
+      # count words
+      .self$words <- sum(.self$count$n)
+    },
+
+
+    # return prediction for a single message
+    predict = function(message) {
+      # clear income message
+      message <- gsub('[\\(\\!\\)\\?\\,\\.]', '', message)
+      message <- tolower(message)
+      parts <- strsplit(message, split = " ")[[1]]
+      parts <- parts[!parts %in% splitted_stop_words]
+
+      # predicted result
+      result_author <- ""
+      max_probability <- 0
+
+      for (i in 1:nrow(.self$writers)) {
+        author <- .self$writers[i, ]
+        
+        # default probability
+        # it's so huge, 'cause (0.5)^400 is very close to 0, that R rounds it to 0
+        probability <- 1.797692e+308
+        
+        # for every word calculate probability of that word
+        for (part in parts) {
+          number <- .self$count$n[
+            .self$count$author == author$author & .self$count$splitted == part
+          ]
+
+          number <- ifelse(length(number) == 0, 1, number + 1)
+
+          probability <- probability * (number / (author$words + .self$words))
+        }
+
+        probability <- probability * author$probability
+      
+        # find max probability
+        if (length(max_probability) == 0 | probability > max_probability) {
+          max_probability <- probability
+          result_author <- author$author
+        }
+      }
+
+      return(result_author)
+    },
+
+    # score you test set so to get the understanding how well you model
+    # works.
+    # look at f1 score or precision and recall
+    # visualize them
+    # try how well your model generalizes to real world data!
+    score = function(test_data) {
+      predictions <- lapply(test_data$text, function(x) predict(x))
+
+      correct_predictions <- sum(predictions == test_data$author)
+      total_observation_count <- nrow(test_data)
+
+      accuracy <- correct_predictions / total_observation_count
+
+      return(accuracy)
+    },
+
+    viation = function(test_data) {
+      result_df <- data.frame(
+        text = character(0),
+        author = character(0),
+        prediction = character(0),
+        result = logical(0)
+      )
+
+      for (i in 1:nrow(test_data)) {
+        row <- test_data[i, ]
+        text <- row$text
+        author <- row$author
+
+
+        prediction <- model$predict(text)
+
+        correct <- ifelse(prediction == author, TRUE, FALSE)
+
+        result_df <- rbind(result_df, data.frame(
+          text = text,
+          author = author,
+          prediction = prediction,
+          result = correct
+        ))
+      }
+  
+      authors <- unique(test_data$author)
+      precision <- numeric()
+      recall <- numeric()
+      f1_score <- numeric()
+
+      for (author in .self$writers$author) {
+        true_positives <- sum(test_data$author == author & result_df$prediction == author)
+        false_positives <- sum(test_data$author != author & result_df$prediction == author)
+        false_negatives <- sum(test_data$author == author & result_df$prediction != author)
+
+        precision_author <- true_positives / (true_positives + false_positives)
+        recall_author <- true_positives / (true_positives + false_negatives)
+
+        precision_author[is.na(precision_author)] <- 0
+        recall_author[is.na(recall_author)] <- 0
+
+        if (precision_author + recall_author == 0) {
+          f1_score_author <- 0
+        } else {
+          f1_score_author <- 2 * (precision_author * recall_author) / (precision_author + recall_author)
+        }
+
+        precision <- c(precision, precision_author)
+        recall <- c(recall, recall_author)
+        f1_score <- c(f1_score, f1_score_author)
+      }
+
+      avg_precision <- mean(precision, na.rm = TRUE)
+      avg_recall <- mean(recall, na.rm = TRUE)
+      avg_f1_score <- mean(f1_score, na.rm = TRUE)
+      
+      cat("Precision:", precision, "\n")
+      cat("Recall:", recall, "\n")
+      cat("F1 Score:", f1_score, "\n\n")
+
+      cat("Average Precision:", avg_precision, "\n")
+      cat("Average Recall:", avg_recall, "\n")
+      cat("Average F1 Score:", avg_f1_score, "\n")
+      metrics <- data.frame(
+        Metric = c("Precision", "Recall", "F1 Score"),
+        Value = c(avg_precision, avg_recall, avg_f1_score)
+      )
+
+      ggplot(metrics, aes(x = Metric, y = Value, fill = Metric)) +
+        geom_bar(stat = "identity") +
+        labs(
+          title = "Average Precision, Recall, and F1 Score",
+          x = "Metric", y = "Value"
+        ) +
+        theme_minimal()
+    }
+  )
+)
+```
+
+```{r}
+model <- naiveBayes()
+model$fit(tidy_text)
+model$predict("I beg both your pardons but I can't be so much mistaken.")
+```
+
+```{r}
+cat("Accuracy:", model$score(test))
+```
+
+## Measure effectiveness of your classifier
+
+Accuracy is not always a good metric for your classifier, so we decided
+to use F1 score metric.
+
+$$
+{\displaystyle F_{1} Score=2{\frac {\mathrm {precision} \cdot \mathrm {recall} }{\mathrm {precision} +\mathrm {recall} }}}
+$$
+
+Where, Precision and Recall equals to
+
+$$
+Precision = \frac{true\ positive}{true\ positive\ + \ false \ positive}\\
+Recall = \frac{true\ positive}{true\ positive\ + \ false \ negative}\\
+$$
+
+```{r}
+model$viation(test)
+```
+
+## Conclusions
+
+-   In this laboratory we created Naive Bayes Classifier. It uses Bayes
+    formula at its core. The Naive Bayes classifier simplifies finding
+    probability by assuming feature independence within each class,
+    allowing us to calculate the likelihood as the product of individual
+    feature probabilities within the class.
+-   The pros of this approach is its simplicity, efficiency and good
+    performance on small datasets. The cons of Naive Bayes Classifier
+    are independence assumption, sensitivity to feature scales and
+    limited expressiveness.
